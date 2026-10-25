@@ -31,10 +31,11 @@ import Testing
     #expect(layout == DesktopLayout(width: 1920, height: 1080, desktopScale: 150, deviceScale: 140))
 }
 
-@Test func connectSizeIsCapped() {
-    let big = DesktopLayout(width: 5120, height: 2880, desktopScale: 200, deviceScale: 180).cappedForConnect
-    #expect(big.width <= 4096 && big.height <= 2048)
-    #expect(big.width % 2 == 0)
-    let small = DesktopLayout(width: 1600, height: 1000, desktopScale: 100, deviceScale: 100)
-    #expect(small.cappedForConnect == small)
+@Test func largeScreensConnectAtFullSize() {
+    // A 5K display in full screen: the session starts at its final size.
+    let fiveK = DesktopLayout(display: DisplayOptions(), viewSize: CGSize(width: 2560, height: 1440), backingScale: 2)
+    #expect(fiveK.width == 5120 && fiveK.height == 2880)
+    // Display control's limits apply.
+    let huge = DesktopLayout(display: DisplayOptions(), viewSize: CGSize(width: 5000, height: 4500), backingScale: 2)
+    #expect(huge.width == 8192 && huge.height == 8192)
 }

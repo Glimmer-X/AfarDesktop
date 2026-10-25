@@ -21,6 +21,8 @@ final class SessionWindowController: NSWindowController, NSWindowDelegate {
     /// The next attempt asks for the password instead of using the saved one.
     private var askForPassword = false
     private var closing = false
+    /// Opening in full screen: the connection waits for the window to get there.
+    private var connectsAfterFullScreen = false
 
     var onClose: ((SessionWindowController) -> Void)?
 
@@ -92,9 +94,9 @@ final class SessionWindowController: NSWindowController, NSWindowDelegate {
         window?.makeFirstResponder(sessionView)
         installKeyUpMonitor()
         if connection.display.startFullScreen, window?.styleMask.contains(.fullScreen) == false {
+            // Connect once the window has its full-screen size, so the session starts at that size.
+            connectsAfterFullScreen = true
             window?.toggleFullScreen(nil)
-            // Connect once the window has its full-screen size.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.connect() }
         } else {
             connect()
         }
@@ -230,6 +232,10 @@ final class SessionWindowController: NSWindowController, NSWindowDelegate {
         setDesktopFillsWindow(true)
     }
 
+    func windowDidEnterFullScreen(_ notification: Notification) {
+        connectIfWaitingForFullScreen()
+    }
+
     func windowWillExitFullScreen(_ notification: Notification) {
         setDesktopFillsWindow(false)
     }
@@ -237,6 +243,13 @@ final class SessionWindowController: NSWindowController, NSWindowDelegate {
     /// When full screen fails, the window keeps its windowed layout.
     func windowDidFailToEnterFullScreen(_ window: NSWindow) {
         setDesktopFillsWindow(false)
+        connectIfWaitingForFullScreen()
+    }
+
+    private func connectIfWaitingForFullScreen() {
+        guard connectsAfterFullScreen else { return }
+        connectsAfterFullScreen = false
+        connect()
     }
 
     private func setDesktopFillsWindow(_ fills: Bool) {

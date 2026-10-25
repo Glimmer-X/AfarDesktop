@@ -364,8 +364,7 @@ bool afar_session_connect(AfarSession *s, const AfarConnectParams *p) {
         freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, p->fullColor) &&
         freerdp_settings_set_bool(settings, FreeRDP_GfxProgressive, TRUE) &&
         freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, TRUE) &&
-        // Display control serves both window-sized and fixed desktops: the size agreed at
-        // connect time is capped, the channel lifts the cap afterwards.
+        // Display control resizes the desktop when the window changes size.
         freerdp_settings_set_bool(settings, FreeRDP_SupportDisplayControl, TRUE) &&
         freerdp_settings_set_bool(settings, FreeRDP_DynamicResolutionUpdate, TRUE) &&
         freerdp_settings_set_bool(settings, FreeRDP_NetworkAutoDetect, TRUE) &&

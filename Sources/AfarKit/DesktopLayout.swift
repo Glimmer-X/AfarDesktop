@@ -37,18 +37,15 @@ public struct DesktopLayout: Equatable, Sendable {
         // The remote interface scales with the density, so it keeps its size on this screen.
         let automaticScale = Int((density * 100).rounded())
         let scale = UInt32(min(500, max(100, display.scale ?? automaticScale)))
-        self.init(width: UInt32(max(200, pixels.0)) & ~1, height: UInt32(max(200, pixels.1)),
-                  desktopScale: scale, deviceScale: scale >= 180 ? 180 : (scale >= 140 ? 140 : 100))
+        // The limits of RDP display control (MS-RDPEDISP), which also hold for the size agreed at
+        // connect time: the session starts at the size it keeps, with no resize right after.
+        let side: (Double) -> UInt32 = { UInt32(min(8192, max(200, $0))) }
+        self.init(width: side(pixels.0) & ~1, height: side(pixels.1),
+                  desktopScale: scale, deviceScale: Self.deviceScale(for: scale))
     }
 
-    /// The size agreed at connect time is capped by the protocol (MS-RDPBCGR 2.2.1.3.2): a larger
-    /// layout starts proportionally smaller and is resized once display control is up.
-    public var cappedForConnect: DesktopLayout {
-        let shrink = min(1, 4096 / Double(width), 2048 / Double(height))
-        guard shrink < 1 else { return self }
-        var capped = self
-        capped.width = UInt32(Double(width) * shrink) & ~1
-        capped.height = UInt32(Double(height) * shrink)
-        return capped
+    /// The device scale Windows pairs with a desktop scale.
+    public static func deviceScale(for desktopScale: UInt32) -> UInt32 {
+        desktopScale >= 180 ? 180 : (desktopScale >= 140 ? 140 : 100)
     }
 }

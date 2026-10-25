@@ -98,8 +98,7 @@ public final class RDPSession: RemoteSession, @unchecked Sendable {
         self.engine = engine
 
         try? FileManager.default.createDirectory(at: parameters.stateDirectory, withIntermediateDirectories: true)
-        // The size agreed at connect time is capped; display control lifts the cap afterwards.
-        let layout = parameters.layout.cappedForConnect
+        let layout = parameters.layout
 
         // The engine copies every string into FreeRDP's settings before afar_session_connect returns.
         let strings = CStrings()

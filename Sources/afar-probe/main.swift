@@ -1,11 +1,12 @@
 // Development tool: connects without a window, prints what happens and saves a frame.
 //
-//   afar-probe <host> [port] [--vnc] [--user NAME] [--seconds N] [--resize WxH[@SCALE]] [--png PATH]
+//   afar-probe <host> [port] [--vnc] [--user NAME] [--seconds N] [--size WxH[@SCALE]] [--resize WxH[@SCALE]] [--png PATH]
 //              [--copy TEXT] [--offer FILE]... [--fetch DIR] [--click X,Y] [--type TEXT] [--stats] [--lossy]
 //   afar-probe <host> [port] --detect
 //
 // The password is read from standard input (one line), so it never appears in the process list.
-// Certificates are accepted for this run only and printed. --copy offers TEXT and --offer files on
+// Certificates are accepted for this run only and printed. --size sets the size to connect at
+// (1280x800 at 100% by default), --resize the size asked for once the session can resize. --copy offers TEXT and --offer files on
 // the remote clipboard; whatever the remote side copies is printed, and files it copies are
 // downloaded into --fetch DIR. --click clicks the remote desktop at X,Y two seconds after
 // connecting, --type types ASCII TEXT after that. --stats prints the session's statistics every second;
@@ -24,8 +25,8 @@ struct Options {
     var port: UInt16?
     var user: String?
     var seconds = 8.0
-    var resize: PixelSize?
-    var resizeScale: UInt32 = 100
+    var size = DesktopLayout(width: 1280, height: 800, desktopScale: 100, deviceScale: 100)
+    var resize: DesktopLayout?
     var png: URL?
     var copy: String?
     var offer: [URL] = []
@@ -35,6 +36,16 @@ struct Options {
     var fullColor = true
     var type: String?
     var detect = false
+}
+
+/// "WIDTHxHEIGHT[@SCALE]", the scale in percent (100 when absent).
+func layout(_ spec: String, for option: String) -> DesktopLayout {
+    let parts = spec.split(separator: "@")
+    let size = parts[0].split(separator: "x").compactMap { UInt32($0) }
+    let scale = parts.count > 1 ? UInt32(parts[1]) : 100
+    guard size.count == 2, let scale else { fail("\(option) expects WIDTHxHEIGHT[@SCALE]") }
+    return DesktopLayout(width: size[0], height: size[1], desktopScale: scale,
+                         deviceScale: DesktopLayout.deviceScale(for: scale))
 }
 
 func parseOptions() -> Options {
@@ -61,18 +72,14 @@ func parseOptions() -> Options {
             let parts = value().split(separator: ",").compactMap { Int32($0) }
             guard parts.count == 2 else { fail("--click expects X,Y") }
             options.click = (parts[0], parts[1])
-        case "--resize":
-            let spec = value().split(separator: "@")
-            let parts = spec[0].split(separator: "x").compactMap { Int($0) }
-            guard parts.count == 2 else { fail("--resize expects WIDTHxHEIGHT[@SCALE]") }
-            options.resize = PixelSize(width: parts[0], height: parts[1])
-            if spec.count > 1, let scale = UInt32(spec[1]) { options.resizeScale = scale }
+        case "--size": options.size = layout(value(), for: arg)
+        case "--resize": options.resize = layout(value(), for: arg)
         default:
             if options.host.isEmpty { options.host = arg } else if let port = UInt16(arg) { options.port = port }
         }
     }
     if options.host.isEmpty {
-        fail("usage: afar-probe <host> [port] [--user NAME] [--seconds N] [--resize WxH[@SCALE]] [--png PATH] [--copy TEXT] [--offer FILE]... [--fetch DIR] [--click X,Y] [--type TEXT] [--stats] [--lossy] [--vnc]")
+        fail("usage: afar-probe <host> [port] [--user NAME] [--seconds N] [--size WxH[@SCALE]] [--resize WxH[@SCALE]] [--png PATH] [--copy TEXT] [--offer FILE]... [--fetch DIR] [--click X,Y] [--type TEXT] [--stats] [--lossy] [--vnc]")
     }
     return options
 }
@@ -108,10 +115,10 @@ final class Probe: RemoteSessionDelegate {
     func run() {
         session.delegate = self
         let state = FileManager.default.temporaryDirectory.appendingPathComponent("afar-probe")
-        let layout = DesktopLayout(width: 1280, height: 800, desktopScale: 100, deviceScale: 100)
+        log("connecting at \(options.size.width)x\(options.size.height) at \(options.size.desktopScale)%")
         do {
             try session.connect(.init(host: options.host, port: options.remoteProtocol.port(fromAddress: options.port),
-                                      username: options.user, password: password, layout: layout,
+                                      username: options.user, password: password, layout: options.size,
                                       fullColor: options.fullColor, audio: false, stateDirectory: state))
         } catch {
             fail("connect failed: \(error)")
@@ -169,11 +176,9 @@ final class Probe: RemoteSessionDelegate {
 
     func sessionCanResize(_ session: any RemoteSession) {
         log("display control ready")
-        if let size = options.resize {
-            let scale = options.resizeScale
-            log("requesting \(size.width)x\(size.height) at \(scale)%")
-            session.requestLayout(DesktopLayout(width: UInt32(size.width), height: UInt32(size.height), desktopScale: scale,
-                                                deviceScale: scale >= 180 ? 180 : (scale >= 140 ? 140 : 100)))
+        if let layout = options.resize {
+            log("requesting \(layout.width)x\(layout.height) at \(layout.desktopScale)%")
+            session.requestLayout(layout)
         }
     }
 
