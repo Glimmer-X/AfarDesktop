@@ -12,6 +12,8 @@
 #include <freerdp/utils/helpers.h>
 #include <winpr/synch.h>
 
+#include <openssl/tls1.h>
+
 // MARK: - Channels
 
 static void channel_connected(void *ctx, const ChannelConnectedEventArgs *e) {
@@ -190,6 +192,27 @@ static BOOL client_new(freerdp *instance, rdpContext *context) {
     return TRUE;
 }
 
+// Windows Server 2008 R2 and older only offer TLS 1.0 in their RDP stack, and the client side
+// starts at TLS 1.2, so the handshake fails before any credentials are exchanged. FreeRDP
+// negotiates the security layer first and then connects TLS without a second chance, so the
+// fix has to happen here: retry once with the TLS floor lowered. Every other server keeps the
+// 1.2 default.
+static BOOL connect_with_tls_fallback(freerdp *instance, rdpContext *context) {
+    if (freerdp_connect(instance))
+        return TRUE;
+
+    if (freerdp_get_last_error(context) != FREERDP_ERROR_TLS_CONNECT_FAILED)
+        return FALSE;
+
+    rdpSettings *settings = context->settings;
+    if (!freerdp_settings_set_uint16(settings, FreeRDP_TLSMinVersion, TLS1_VERSION) ||
+        !freerdp_settings_set_uint32(settings, FreeRDP_TlsSecLevel, 0))
+        return FALSE;
+
+    freerdp_disconnect(instance);
+    return freerdp_connect(instance);
+}
+
 static void *session_thread(void *arg) {
     AfarSession *s = arg;
     freerdp *instance = s->context->instance;
@@ -197,7 +220,7 @@ static void *session_thread(void *arg) {
     if (s->cb.stateChanged)
         s->cb.stateChanged(s->cb.context, AfarStateConnecting, 0, NULL);
 
-    if (freerdp_connect(instance)) {
+    if (connect_with_tls_fallback(instance, s->context)) {
         HANDLE handles[MAXIMUM_WAIT_OBJECTS] = {0};
         while (!freerdp_shall_disconnect_context(s->context)) {
             const DWORD count = freerdp_get_event_handles(s->context, handles, ARRAYSIZE(handles));
